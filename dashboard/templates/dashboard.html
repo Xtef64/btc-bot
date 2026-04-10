@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BTC Trading Bot</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    body   { background: #0b1120; font-family: 'Inter', system-ui, sans-serif; }
+    .card  { background: #111827; border: 1px solid #1f2937; border-radius: 12px; }
+    .bar-track { background: #1f2937; border-radius: 9999px; height: 6px; overflow: hidden; }
+    .bar-fill  { height: 100%; border-radius: 9999px; transition: width .6s ease, background-color .6s ease; }
+    .pulse     { animation: pulse 2s cubic-bezier(.4,0,.6,1) infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  </style>
+</head>
+<body class="text-slate-200 min-h-screen p-6">
+
+  <!-- ── Header ── -->
+  <header class="flex flex-wrap items-center justify-between gap-4 mb-8">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight">BTC Trading Bot</h1>
+      <p class="text-slate-500 text-sm mt-0.5">Real-time dashboard</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="mode-badge"
+            class="px-3 py-1 rounded-full text-xs font-semibold
+                   bg-amber-500/15 text-amber-400 border border-amber-500/30">
+        PAPER TRADING
+      </span>
+      <span class="flex items-center gap-1.5 text-xs text-slate-500">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 pulse"></span>Live
+      </span>
+    </div>
+  </header>
+
+  <!-- ── KPI row ── -->
+  <section class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div class="card p-5">
+      <p class="text-slate-500 text-xs mb-1 uppercase tracking-wider">BTC Price</p>
+      <p id="btc-price" class="text-2xl font-bold">—</p>
+    </div>
+    <div class="card p-5">
+      <p class="text-slate-500 text-xs mb-1 uppercase tracking-wider">Portfolio</p>
+      <p id="portfolio-value" class="text-2xl font-bold">—</p>
+    </div>
+    <div class="card p-5">
+      <p class="text-slate-500 text-xs mb-1 uppercase tracking-wider">Total P&amp;L</p>
+      <p id="pnl"     class="text-2xl font-bold">—</p>
+      <p id="pnl-pct" class="text-xs mt-1 text-slate-400">—</p>
+    </div>
+    <div class="card p-5">
+      <p class="text-slate-500 text-xs mb-1 uppercase tracking-wider">Position</p>
+      <p id="pos-status" class="text-2xl font-bold">—</p>
+      <p id="pos-entry"  class="text-xs mt-1 text-slate-400">—</p>
+    </div>
+  </section>
+
+  <!-- ── Decision + Signal bars ── -->
+  <section class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+
+    <!-- Decision card -->
+    <div class="card p-6 flex flex-col items-center justify-center text-center">
+      <p class="text-slate-500 text-xs uppercase tracking-wider mb-3">Latest Decision</p>
+      <div id="decision-badge"
+           class="px-8 py-4 rounded-2xl text-3xl font-extrabold mb-3
+                  bg-slate-700/40 text-slate-300 border border-slate-600">
+        —
+      </div>
+      <p class="text-slate-500 text-xs">
+        Score: <span id="decision-score" class="font-mono text-slate-300">—</span>
+      </p>
+      <p class="text-slate-500 text-xs mt-1">
+        Confidence: <span id="decision-conf" class="text-slate-300">—</span>
+      </p>
+      <p class="text-slate-600 text-xs mt-2" id="decision-time">—</p>
+    </div>
+
+    <!-- Signal bars -->
+    <div class="card p-6 lg:col-span-2">
+      <p class="text-sm font-semibold mb-5">Signal Breakdown</p>
+      <div class="space-y-4">
+
+        <div>
+          <div class="flex justify-between text-xs mb-1">
+            <span class="text-slate-400">Technical <span class="text-slate-600">(50%)</span></span>
+            <span id="tech-score" class="font-mono">—</span>
+          </div>
+          <div class="bar-track"><div id="tech-bar" class="bar-fill" style="width:50%"></div></div>
+        </div>
+
+        <div>
+          <div class="flex justify-between text-xs mb-1">
+            <span class="text-slate-400">Institutional <span class="text-slate-600">(25%)</span></span>
+            <span id="inst-score" class="font-mono">—</span>
+          </div>
+          <div class="bar-track"><div id="inst-bar" class="bar-fill" style="width:50%"></div></div>
+        </div>
+
+        <div>
+          <div class="flex justify-between text-xs mb-1">
+            <span class="text-slate-400">Sentiment <span class="text-slate-600">(25%)</span></span>
+            <span id="sent-score" class="font-mono">—</span>
+          </div>
+          <div class="bar-track"><div id="sent-bar" class="bar-fill" style="width:50%"></div></div>
+        </div>
+
+        <div class="pt-3 border-t border-slate-700/60">
+          <div class="flex justify-between text-xs mb-1">
+            <span class="text-slate-300 font-medium">Fear &amp; Greed Index</span>
+            <span id="fng-label" class="text-slate-300">—</span>
+          </div>
+          <div class="bar-track">
+            <div id="fng-bar"
+                 class="bar-fill"
+                 style="width:50%; background: linear-gradient(90deg,#ef4444,#eab308,#22c55e)">
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Technical sub-signals + Trades ── -->
+  <section class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+
+    <!-- Technical detail -->
+    <div class="card p-6">
+      <p class="text-sm font-semibold mb-4">Technical Indicators</p>
+      <table class="w-full text-xs">
+        <tbody id="tech-table">
+          <tr class="border-b border-slate-800">
+            <td class="py-2 text-slate-400 w-1/2">RSI</td>
+            <td class="text-right"><span id="rsi-raw" class="text-slate-500 mr-2">—</span><span id="rsi-sig" class="font-mono">—</span></td>
+          </tr>
+          <tr class="border-b border-slate-800">
+            <td class="py-2 text-slate-400">MACD</td>
+            <td class="text-right"><span id="macd-sig" class="font-mono">—</span></td>
+          </tr>
+          <tr class="border-b border-slate-800">
+            <td class="py-2 text-slate-400">Bollinger Bands</td>
+            <td class="text-right"><span id="bb-sig" class="font-mono">—</span></td>
+          </tr>
+          <tr class="border-b border-slate-800">
+            <td class="py-2 text-slate-400">EMA Trend</td>
+            <td class="text-right"><span id="ema-sig" class="font-mono">—</span></td>
+          </tr>
+          <tr>
+            <td class="py-2 text-slate-400">Volume</td>
+            <td class="text-right"><span id="vol-sig" class="font-mono">—</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Recent trades -->
+    <div class="card p-6">
+      <p class="text-sm font-semibold mb-4">Recent Trades</p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs">
+          <thead>
+            <tr class="text-slate-500 border-b border-slate-800">
+              <th class="text-left pb-2">#</th>
+              <th class="text-left pb-2">Type</th>
+              <th class="text-right pb-2">Price</th>
+              <th class="text-right pb-2">BTC</th>
+              <th class="text-right pb-2">P&amp;L</th>
+            </tr>
+          </thead>
+          <tbody id="trades-body">
+            <tr><td colspan="5" class="text-center text-slate-600 py-6">No trades yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Open position detail ── -->
+  <section id="pos-section" class="card p-6 mb-6 hidden">
+    <p class="text-sm font-semibold mb-4">Open Position Detail</p>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+      <div>
+        <p class="text-slate-500 mb-1">Entry</p>
+        <p id="pos-entry-detail" class="text-base font-bold">—</p>
+      </div>
+      <div>
+        <p class="text-slate-500 mb-1">Quantity</p>
+        <p id="pos-qty" class="text-base font-bold">—</p>
+      </div>
+      <div>
+        <p class="text-slate-500 mb-1">Stop Loss</p>
+        <p id="pos-sl" class="text-base font-bold text-red-400">—</p>
+      </div>
+      <div>
+        <p class="text-slate-500 mb-1">Take Profit</p>
+        <p id="pos-tp" class="text-base font-bold text-emerald-400">—</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Footer ── -->
+  <footer class="text-center text-slate-700 text-xs">
+    Last refresh: <span id="last-update">—</span> &nbsp;·&nbsp; auto-refresh every 15 s
+  </footer>
+
+  <!-- ── JS ── -->
+  <script>
+    const $ = id => document.getElementById(id);
+
+    /* ---- helpers ---- */
+    function fmt(n, dec=2, prefix='$') {
+      if (n == null) return '—';
+      return prefix + Number(n).toLocaleString('en-US', {minimumFractionDigits: dec, maximumFractionDigits: dec});
+    }
+    function fmtPct(n) {
+      if (n == null) return '—';
+      return (n >= 0 ? '+' : '') + (n * 100).toFixed(2) + '%';
+    }
+    function scoreColor(s) {
+      if (s >  0.3) return '#22c55e';
+      if (s >  0.0) return '#84cc16';
+      if (s > -0.3) return '#eab308';
+      return '#ef4444';
+    }
+    function scoreWidth(s) { return ((s + 1) / 2 * 100).toFixed(1) + '%'; }
+    function sigClass(v) {
+      if (v > 0.1)  return 'text-emerald-400';
+      if (v < -0.1) return 'text-red-400';
+      return 'text-slate-400';
+    }
+    function setBar(barId, scoreId, score) {
+      const bar = $(barId);
+      const txt = $(scoreId);
+      bar.style.width           = scoreWidth(score);
+      bar.style.backgroundColor = scoreColor(score);
+      txt.textContent           = score.toFixed(4);
+      txt.className             = 'font-mono ' + sigClass(score);
+    }
+
+    /* ---- main update ---- */
+    async function refresh() {
+      let data;
+      try {
+        const r = await fetch('/api/status');
+        data = await r.json();
+      } catch(e) { console.error(e); return; }
+
+      const { portfolio: p, position: pos, recent_trades, signals: s, paper_trading } = data;
+
+      /* mode badge */
+      if (!paper_trading) {
+        $('mode-badge').textContent = 'LIVE TRADING';
+        $('mode-badge').className = 'px-3 py-1 rounded-full text-xs font-semibold bg-red-500/15 text-red-400 border border-red-500/30';
+      }
+
+      /* KPIs */
+      if (p) {
+        $('btc-price').textContent     = p.current_price ? fmt(p.current_price, 2) : '—';
+        $('portfolio-value').textContent = fmt(p.total_value);
+        const pnl = p.pnl ?? 0;
+        $('pnl').textContent      = (pnl >= 0 ? '+' : '') + fmt(pnl);
+        $('pnl').className        = 'text-2xl font-bold ' + (pnl >= 0 ? 'text-emerald-400' : 'text-red-400');
+        $('pnl-pct').textContent  = fmtPct(p.pnl_pct);
+        $('pnl-pct').className    = 'text-xs mt-1 ' + ((p.pnl_pct ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400');
+      }
+
+      /* position */
+      if (pos && pos.status === 'OPEN') {
+        $('pos-status').textContent  = 'LONG';
+        $('pos-status').className    = 'text-2xl font-bold text-emerald-400';
+        $('pos-entry').textContent   = 'Entry ' + fmt(pos.entry_price);
+        $('pos-section').classList.remove('hidden');
+        $('pos-entry-detail').textContent = fmt(pos.entry_price);
+        $('pos-qty').textContent          = (pos.quantity || 0).toFixed(6) + ' BTC';
+        $('pos-sl').textContent           = fmt(pos.stop_loss);
+        $('pos-tp').textContent           = fmt(pos.take_profit);
+      } else {
+        $('pos-status').textContent = 'NONE';
+        $('pos-status').className   = 'text-2xl font-bold text-slate-500';
+        $('pos-entry').textContent  = 'No open position';
+        $('pos-section').classList.add('hidden');
+      }
+
+      /* signals */
+      if (s && s.action) {
+        /* decision badge */
+        const badge = $('decision-badge');
+        badge.textContent = s.action;
+        const dc = { BUY: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+                     SELL: 'bg-red-500/15 text-red-400 border-red-500/30',
+                     HOLD: 'bg-slate-700/40 text-slate-300 border-slate-600' };
+        badge.className = 'px-8 py-4 rounded-2xl text-3xl font-extrabold mb-3 border ' + (dc[s.action] || dc.HOLD);
+        $('decision-score').textContent = (s.aggregate_score || 0).toFixed(4);
+        $('decision-conf').textContent  = ((s.confidence || 0) * 100).toFixed(1) + '%';
+        $('decision-time').textContent  = s.timestamp ? new Date(s.timestamp).toLocaleTimeString() : '';
+
+        /* bars */
+        setBar('tech-bar', 'tech-score', s.technical?.score ?? 0);
+        setBar('inst-bar', 'inst-score', s.institutional?.score ?? 0);
+        setBar('sent-bar', 'sent-score', s.sentiment?.score ?? 0);
+
+        /* FnG */
+        const fng = s.sentiment?.fear_greed_value ?? 50;
+        $('fng-label').textContent = fng + ' / 100 — ' + (s.sentiment?.fear_greed_label || '');
+        $('fng-bar').style.width   = fng + '%';
+
+        /* technical sub-signals */
+        const ts = s.technical?.signals || {};
+        const rsiRaw = s.technical?.rsi_value;
+        $('rsi-raw').textContent = rsiRaw != null ? rsiRaw.toFixed(1) : '—';
+        const pairs = [['rsi-sig', ts.rsi], ['macd-sig', ts.macd], ['bb-sig', ts.bollinger], ['ema-sig', ts.ema_trend], ['vol-sig', ts.volume]];
+        pairs.forEach(([id, v]) => {
+          const el = $(id);
+          if (v != null) { el.textContent = Number(v).toFixed(3); el.className = 'font-mono ' + sigClass(v); }
+        });
+      }
+
+      /* trades */
+      if (recent_trades && recent_trades.length) {
+        $('trades-body').innerHTML = [...recent_trades].reverse().slice(0, 8).map(t => {
+          const isBuy = t.type === 'BUY';
+          const pnlCell = t.pnl != null
+            ? `<td class="text-right ${t.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}">${t.pnl >= 0 ? '+' : ''}$${Number(t.pnl).toFixed(2)}</td>`
+            : '<td class="text-right text-slate-600">—</td>';
+          return `<tr class="border-b border-slate-800/60">
+            <td class="py-1.5 text-slate-600">${t.id}</td>
+            <td class="${isBuy ? 'text-emerald-400' : 'text-red-400'} font-semibold">${t.type}${t.paper ? ' *' : ''}</td>
+            <td class="text-right">$${Number(t.price).toLocaleString('en-US',{maximumFractionDigits:0})}</td>
+            <td class="text-right text-slate-300">${Number(t.quantity).toFixed(4)}</td>
+            ${pnlCell}
+          </tr>`;
+        }).join('');
+      }
+
+      $('last-update').textContent = new Date().toLocaleTimeString();
+    }
+
+    refresh();
+    setInterval(refresh, 15000);
+  </script>
+</body>
+</html>
