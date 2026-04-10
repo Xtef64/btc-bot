@@ -1,3 +1,4 @@
+import requests
 import pandas as pd
 import logging
 from binance.client import Client
@@ -6,19 +7,25 @@ from config import Config
 
 logger = logging.getLogger(__name__)
 
+COINGECKO_URL = "https://api.coingecko.com/api/v3/simple/price"
+
 
 class BinanceClient:
     def __init__(self):
+        self.symbol = Config.TRADING_PAIR
+        self.client = None
         try:
             self.client = Client(
                 Config.BINANCE_API_KEY,
                 Config.BINANCE_SECRET_KEY,
-                testnet=Config.BINANCE_TESTNET,
+                tld="com",
+                requests_params={"timeout": 30},
             )
+            # Use the global endpoint to bypass geo-restrictions (e.g. Railway US servers)
+            self.client.API_URL = "https://api1.binance.com/api"
+            logger.info("Binance client initialised (api1.binance.com)")
         except Exception as e:
-            logger.error(f"Binance client init error: {e}")
-            self.client = None
-        self.symbol = Config.TRADING_PAIR
+            logger.error(f"Binance client init error: {e} — price fallback to CoinGecko")
 
     # ------------------------------------------------------------------
     # Market data
@@ -47,13 +54,32 @@ class BinanceClient:
             return None
 
     def get_current_price(self) -> float | None:
-        """Return latest BTC price or None."""
+        """Return latest BTC price, with CoinGecko as fallback."""
+        # Primary: Binance
+        if self.client:
+            try:
+                ticker = self.client.get_symbol_ticker(symbol=self.symbol)
+                return float(ticker["price"])
+            except Exception as e:
+                logger.warning(f"Binance get_price failed: {e} — trying CoinGecko")
+
+        # Fallback: CoinGecko (free, no auth, no geo-restriction)
+        return self._coingecko_price()
+
+    def _coingecko_price(self) -> float | None:
         try:
-            ticker = self.client.get_symbol_ticker(symbol=self.symbol)
-            return float(ticker["price"])
-        except BinanceAPIException as e:
-            logger.error(f"Binance get_price error: {e}")
-            return None
+            resp = requests.get(
+                COINGECKO_URL,
+                params={"ids": "bitcoin", "vs_currencies": "usd"},
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                price = resp.json()["bitcoin"]["usd"]
+                logger.info(f"CoinGecko price: ${price:,.2f}")
+                return float(price)
+        except Exception as e:
+            logger.error(f"CoinGecko fallback error: {e}")
+        return None
 
     def get_orderbook(self, limit: int = 20) -> dict | None:
         try:

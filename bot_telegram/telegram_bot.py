@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from telegram import Update, Bot
 from telegram.ext import Application, CommandHandler, ContextTypes
 from config import Config
@@ -134,13 +135,15 @@ async def cmd_signals(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ------------------------------------------------------------------
 
 async def _send(message: str):
-    if not Config.TELEGRAM_BOT_TOKEN or not Config.TELEGRAM_CHAT_ID:
+    token   = os.getenv("TELEGRAM_BOT_TOKEN") or Config.TELEGRAM_BOT_TOKEN
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")   or Config.TELEGRAM_CHAT_ID
+    if not token or not chat_id:
         return
     try:
-        bot = Bot(token=Config.TELEGRAM_BOT_TOKEN)
+        bot = Bot(token=token)
         async with bot:
             await bot.send_message(
-                chat_id=Config.TELEGRAM_CHAT_ID,
+                chat_id=chat_id,
                 text=message,
                 parse_mode="Markdown",
             )
@@ -150,7 +153,9 @@ async def _send(message: str):
 
 def send_notification(message: str):
     """Thread-safe fire-and-forget notification."""
-    if not Config.TELEGRAM_BOT_TOKEN or not Config.TELEGRAM_CHAT_ID:
+    token   = os.getenv("TELEGRAM_BOT_TOKEN") or Config.TELEGRAM_BOT_TOKEN
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")   or Config.TELEGRAM_CHAT_ID
+    if not token or not chat_id:
         return
     try:
         asyncio.run(_send(message))
@@ -163,12 +168,14 @@ def send_notification(message: str):
 # ------------------------------------------------------------------
 
 def run_telegram_bot():
-    if not Config.TELEGRAM_BOT_TOKEN:
+    # Read directly from env to ensure Railway variables are picked up at runtime
+    token = os.getenv("TELEGRAM_BOT_TOKEN") or Config.TELEGRAM_BOT_TOKEN
+    if not token:
         logger.warning("TELEGRAM_BOT_TOKEN not set — Telegram bot disabled.")
         return
 
     async def _main():
-        app = Application.builder().token(Config.TELEGRAM_BOT_TOKEN).build()
+        app = Application.builder().token(token).build()
         app.add_handler(CommandHandler("start",     cmd_start))
         app.add_handler(CommandHandler("status",    cmd_status))
         app.add_handler(CommandHandler("position",  cmd_position))
